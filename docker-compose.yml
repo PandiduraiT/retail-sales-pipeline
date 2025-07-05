@@ -1,0 +1,90 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:13
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user_airflow
+      POSTGRES_PASSWORD: psswd_airflow
+      POSTGRES_DB: retail_sales
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_airflow -d retail_sales"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - retail_pipeline_network
+
+  airflow-init:
+    image: apache/airflow:2.5.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://user_airflow:psswd_airflow@postgres/retail_sales
+      AIRFLOW_CONN_POSTGRES_RETAIL_SALES: postgres://user_airflow:psswd_airflow@postgres:5432/retail_sales 
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__WEBSERVER__SECRET_KEY: "temporary-key-change-me-later-123"
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    entrypoint: /bin/bash -c "airflow db upgrade && airflow users create -u admin -p admin -r Admin -e admin@example.com -f Admin -l User"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./logs:/opt/airflow/logs
+      - ./sql:/opt/airflow/sql
+    networks:
+      - retail_pipeline_network
+
+  airflow-webserver:
+    image: apache/airflow:2.5.1
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: webserver
+    ports:
+      - "8080:8080"
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://user_airflow:psswd_airflow@postgres/retail_sales
+      AIRFLOW_CONN_POSTGRES_RETAIL_SALES: postgres://user_airflow:psswd_airflow@postgres:5432/retail_sales  # <-- Add this line
+      AIRFLOW__WEBSERVER__SECRET_KEY: "temporary-key-change-me-later-123"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+      - ./sql:/opt/airflow/sql
+    networks:
+      - retail_pipeline_network
+
+  airflow-scheduler:
+    image: apache/airflow:2.5.1
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: scheduler
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://user_airflow:psswd_airflow@postgres/retail_sales
+      AIRFLOW_CONN_POSTGRES_RETAIL_SALES: postgres://user_airflow:psswd_airflow@postgres:5432/retail_sales 
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+      - ./sql:/opt/airflow/sql
+    networks:
+      - retail_pipeline_network
+
+volumes:
+  postgres_data:
+
+networks:
+  retail_pipeline_network:
+    driver: bridge

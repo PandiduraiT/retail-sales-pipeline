@@ -1,0 +1,12 @@
+# Airflow logs
+logs/
+opt/airflow/logs/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# OS junk
+.DS_Store
+Thumbs.db

@@ -39,7 +39,6 @@ services:
       - ./dags:/opt/airflow/dags
       - ./data:/opt/airflow/data
       - ./logs:/opt/airflow/logs
-      - ./sql:/opt/airflow/sql
     networks:
       - retail_pipeline_network
 
@@ -54,13 +53,12 @@ services:
       - "8080:8080"
     environment:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://user_airflow:psswd_airflow@postgres/retail_sales
-      AIRFLOW_CONN_POSTGRES_RETAIL_SALES: postgres://user_airflow:psswd_airflow@postgres:5432/retail_sales  # <-- Add this line
+      AIRFLOW_CONN_POSTGRES_RETAIL_SALES: postgres://user_airflow:psswd_airflow@postgres:5432/retail_sales
       AIRFLOW__WEBSERVER__SECRET_KEY: "temporary-key-change-me-later-123"
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
-      - ./sql:/opt/airflow/sql
     networks:
       - retail_pipeline_network
 
@@ -73,12 +71,27 @@ services:
     command: scheduler
     environment:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://user_airflow:psswd_airflow@postgres/retail_sales
-      AIRFLOW_CONN_POSTGRES_RETAIL_SALES: postgres://user_airflow:psswd_airflow@postgres:5432/retail_sales 
+      AIRFLOW_CONN_POSTGRES_RETAIL_SALES: postgres://user_airflow:psswd_airflow@postgres:5432/retail_sales
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
-      - ./sql:/opt/airflow/sql
+    networks:
+      - retail_pipeline_network
+  
+  streamlit:
+    image: python:3.10
+    command: >
+      /bin/bash -c "
+      pip install streamlit pandas sqlalchemy psycopg2-binary &&
+      streamlit run /app/dashboard.py --server.port 8501 --server.address 0.0.0.0
+      "
+    volumes:
+      - ./dashboard:/app
+    ports:
+      - "8501:8501"
+    depends_on:
+      - postgres
     networks:
       - retail_pipeline_network
 

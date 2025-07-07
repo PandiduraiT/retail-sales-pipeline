@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS raw_sales_data (
-    invoice_id VARCHAR(15)
+    invoice_id VARCHAR(15),
     branch VARCHAR,
     city VARCHAR,
     customer_type VARCHAR,

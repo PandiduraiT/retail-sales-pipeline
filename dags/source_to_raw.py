@@ -29,7 +29,7 @@ def load_csv_to_postgres():
         "rating"
     ]
 
-    hook = PostgresHook(postgres_conn_id='my_postgres')
+    hook = PostgresHook(postgres_conn_id='postgres_retail_sales')
     engine = hook.get_sqlalchemy_engine()
     conn = hook.get_conn()
     cursor = conn.cursor()
@@ -63,8 +63,8 @@ with DAG(
 
     create_raw_data_table = PostgresOperator(
         task_id='create_raw_data_table',
-        postgres_conn_id='my_postgres',
-        sql='/opt/airflow/sql/raw/create_raw_sales.sql'
+        postgres_conn_id='postgres_retail_sales',
+        sql='sql/raw/create_raw_sales.sql'
         )
  
     load_csv_raw_table = PythonOperator(

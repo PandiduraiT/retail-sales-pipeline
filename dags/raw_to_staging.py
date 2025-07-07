@@ -15,7 +15,7 @@ def extract_raw_sales_data(**context):
     Returns:
         str: Path to the extracted data file
     """
-    hook = PostgresHook(postgres_conn_id='my_postgres')
+    hook = PostgresHook(postgres_conn_id='postgres_retail_sales')
     conn = hook.get_conn()
     cursor = conn.cursor()
     
@@ -82,7 +82,7 @@ def load_to_staging_table(staging_table_name, **context):
     transformed_df = transform_for_staging_table(df, staging_table_name)
     
     # Load to staging table
-    hook = PostgresHook(postgres_conn_id='my_postgres')
+    hook = PostgresHook(postgres_conn_id='postgres_retail_sales')
     engine = hook.get_sqlalchemy_engine()
     
     transformed_df.to_sql(
@@ -153,10 +153,10 @@ def transform_for_staging_table(df, staging_table_name):
         return transformed_df
 
     elif staging_table_name == 'stg_sales':
-        transformed_df = df[['invoice_id', 'quantity', 'tax_5_percent', 'total', 'cogs', 'gross_income', 'gross_margin_percentage']].copy()
+        transformed_df = df[['invoice_id', 'quantity', 'tax_5_percent', 'sales', 'cogs', 'gross_income', 'gross_margin_percentage']].copy()
         transformed_df['quantity'] = pd.to_numeric(transformed_df['quantity'], errors='coerce')
         transformed_df['tax'] = pd.to_numeric(transformed_df['tax_5_percent'], errors='coerce')
-        transformed_df['total'] = pd.to_numeric(transformed_df['total'], errors='coerce')
+        transformed_df['total'] = pd.to_numeric(transformed_df['sales'], errors='coerce')
         transformed_df['cogs'] = pd.to_numeric(transformed_df['cogs'], errors='coerce')
         transformed_df['gross_income'] = pd.to_numeric(transformed_df['gross_income'], errors='coerce')
         transformed_df['gross_margin_percentage'] = pd.to_numeric(transformed_df['gross_margin_percentage'], errors='coerce')
@@ -203,8 +203,8 @@ with DAG(
     # Create staging tables
     create_staging_tables = PostgresOperator(
         task_id='create_staging_tables',
-        postgres_conn_id='my_postgres',
-        sql='/opt/airflow/sql/staging/create_staging_tables.sql'
+        postgres_conn_id='postgres_retail_sales',
+        sql='sql/staging/create_staging_tables.sql'
     )
     
     # Extract raw data once

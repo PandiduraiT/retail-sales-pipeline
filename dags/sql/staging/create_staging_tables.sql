@@ -2,14 +2,14 @@ CREATE TABLE IF NOT EXISTS stg_branch(
     invoice_id VARCHAR(15),
     branch VARCHAR,
     city VARCHAR
-)
+);
 
 CREATE TABLE IF NOT EXISTS stg_customer(
     invoice_id VARCHAR(15),
     customer_type VARCHAR,
     gender VARCHAR(8),
     rating DECIMAL(3,1)
-)
+);
 
 CREATE TABLE IF NOT EXISTS stg_date(
     invoice_id VARCHAR(15),
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS stg_date(
     month INTEGER,
     year INTEGER,
     weekday VARCHAR
-)
+);
 
 CREATE TABLE IF NOT EXISTS stg_time (
     invoice_id VARCHAR,
@@ -49,6 +49,3 @@ CREATE TABLE IF NOT EXISTS stg_sales (
     gross_income NUMERIC,
     gross_margin_percentage NUMERIC
 );
-
-
-

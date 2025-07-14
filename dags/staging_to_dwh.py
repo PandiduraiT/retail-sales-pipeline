@@ -10,71 +10,96 @@ def load_dim_table(staging_table, dim_table, dim_columns, unique_columns=None, *
     Load deduplicated data from staging table into dimension table.
     """
     hook = PostgresHook(postgres_conn_id='postgres_retail_sales')
-    engine = hook.get_sqlalchemy_engine()
     
-    # Load data from staging
-    df = pd.read_sql(f"SELECT {', '.join(dim_columns)} FROM {staging_table}", con=engine)
-
-    # Deduplicate
+    # Get data from staging table
+    records = hook.get_records(f"SELECT {', '.join(dim_columns)} FROM {staging_table}")
+    
+    if not records:
+        print(f"⚠️  No data found in {staging_table}")
+        return
+    
+    # Convert to DataFrame for deduplication
+    df = pd.DataFrame(records, columns=dim_columns)
+    
+    # Deduplicate if unique columns specified
     if unique_columns:
         df = df.drop_duplicates(subset=unique_columns)
-
-    # Append to dimension table
-    df.to_sql(
-        name=dim_table,
-        con=engine,
-        if_exists='append',
-        index=False,
-        method='multi'
+    
+    if len(df) == 0:
+        print(f"⚠️  No data to insert into {dim_table} after deduplication")
+        return
+    
+    # Clear existing data first (for fresh load)
+    hook.run(f"DELETE FROM {dim_table}")
+    
+    # Convert back to list of tuples for insert_rows
+    rows = [tuple(row) for row in df.values]
+    
+    # Insert using PostgresHook - this handles transactions automatically
+    hook.insert_rows(
+        table=dim_table,
+        rows=rows,
+        target_fields=dim_columns,
+        commit_every=1000
     )
-    print(f"Inserted {len(df)} rows into {dim_table}.")
+    
+    print(f"✅ Successfully inserted {len(rows)} rows into {dim_table}")
 
 def load_sales_fact(**context):
     """
-    Merge data from staging tables and insert into Sales_Fact table.
-    Joins dimension tables using attributes from stg_* tables, not invoice_id.
+    Load data into Sales_Fact table by joining with dimension tables.
     """
     hook = PostgresHook(postgres_conn_id='postgres_retail_sales')
-    engine = hook.get_sqlalchemy_engine()
 
+    
+    # Complex query to join staging tables with dimension tables
     query = """
     INSERT INTO Sales_Fact (
         invoice_id, branch_id, customer_id, product_id, date_id, time_id, payment_id,
-        quantity, tax, total, cogs, gross_income, gross_margin_percentage
-    )
-    SELECT
-        s.invoice_id,
-        b.branch_id,
-        c.customer_id,
-        p.product_id,
-        d.date_id,
-        t.time_id,
-        pm.payment_id,
-        s.quantity,
-        s.tax,
-        s.total,
-        s.cogs,
-        s.gross_income,
-        s.gross_margin_percentage
-    FROM stg_sales s
-    JOIN stg_branch sb ON s.invoice_id = sb.invoice_id
-    JOIN Branch_Dim b ON sb.branch_name = b.branch_name AND sb.city = b.city
-    JOIN stg_customer sc ON s.invoice_id = sc.invoice_id
-    JOIN Customer_Dim c ON sc.customer_type = c.customer_type AND sc.gender = c.gender
-    JOIN stg_product sp ON s.invoice_id = sp.invoice_id
-    JOIN Product_Dim p ON sp.product_line = p.product_line
-    JOIN stg_date sd ON s.invoice_id = sd.invoice_id
-    JOIN Date_Dim d ON sd.full_date = d.full_date
-    JOIN stg_time st ON s.invoice_id = st.invoice_id
-    JOIN Time_Dim t ON st.time::time = t.time
-    JOIN stg_payment spm ON s.invoice_id = spm.invoice_id
-    JOIN Payment_Dim pm ON spm.payment_method = pm.payment_method;
+        quantity, tax, total, cogs, gross_income, gross_margin_percentage, rating
+    ) SELECT  
+        st_s.invoice_id,
+        B.branch_id,
+        C.customer_id,
+        P.product_id,
+        D.date_id,
+        T.time_id,
+        Pt.payment_id,
+        st_s.quantity,
+        st_s.tax,
+        st_s.total,
+        st_s.cogs,
+        st_s.gross_income,
+        st_s.gross_margin_percentage,
+        stg_c.rating::numeric
+    FROM stg_sales AS st_s                   
+    JOIN stg_branch AS stg_b ON st_s.invoice_id = stg_b.invoice_id
+    JOIN Branch_Dim AS B ON stg_b.branch = B.branch AND stg_b.city = B.city
+    JOIN stg_customer AS stg_c ON st_s.invoice_id = stg_c.invoice_id
+    JOIN Customer_Dim AS C ON stg_c.customer_type = C.customer_type
+    JOIN stg_product AS stg_p ON st_s.invoice_id = stg_p.invoice_id
+    JOIN Product_Dim AS P ON stg_p.product_line = P.product_line
+    JOIN stg_date AS stg_d ON st_s.invoice_id = stg_d.invoice_id
+    JOIN Date_Dim AS D ON stg_d.full_date = D.full_date
+    JOIN stg_time AS stg_t ON st_s.invoice_id = stg_t.invoice_id
+    JOIN Time_Dim AS T ON stg_t.time = T.time
+    JOIN stg_payment AS stg_pt ON st_s.invoice_id = stg_pt.invoice_id
+    JOIN Payment_Dim AS Pt ON stg_pt.payment_method = Pt.payment_method;
     """
-
-    with engine.begin() as conn:
-        conn.execute(query)
-    print("✅ Loaded data into Sales_Fact table successfully.")
-
+    
+    try:
+        # Execute the query
+        hook.run(query)
+        
+        # Get count of inserted rows
+        count_result = hook.get_first("SELECT COUNT(*) FROM Sales_Fact")
+        row_count = count_result[0] if count_result else 0
+        
+        print(f"✅ Sales_Fact table now has {row_count} total rows")
+        
+    except Exception as e:
+        print(f"❌ Error loading Sales_Fact: {str(e)}")
+        raise
 
 with DAG(
     "staging_to_dwh",
@@ -98,8 +123,8 @@ with DAG(
         op_kwargs={
             'staging_table': 'stg_branch',
             'dim_table': 'Branch_Dim',
-            'dim_columns': ['branch_name', 'city'],
-            'unique_columns': ['branch_name', 'city']
+            'dim_columns': ['branch', 'city'],
+            'unique_columns': ['branch', 'city']
         }
     )
 
@@ -131,7 +156,7 @@ with DAG(
         op_kwargs={
             'staging_table': 'stg_date',
             'dim_table': 'Date_Dim',
-           'dim_columns': ['full_date', 'day', 'month', 'year', 'weekday'],
+            'dim_columns': ['full_date', 'day', 'month', 'year', 'weekday'],
             'unique_columns': ['full_date']
         }
     )
@@ -165,7 +190,7 @@ with DAG(
     )
 
     # Set DAG dependencies
-    create_dwh_tables >> [
+    create_dwh_tables  >> [
         load_branch_dim, load_customer_dim, load_product_dim,
         load_date_dim, load_time_dim, load_payment_dim
     ] >> load_fact

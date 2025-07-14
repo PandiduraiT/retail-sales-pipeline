@@ -162,6 +162,12 @@ def transform_for_staging_table(df, staging_table_name):
         transformed_df['gross_margin_percentage'] = pd.to_numeric(transformed_df['gross_margin_percentage'], errors='coerce')
         transformed_df = transformed_df.drop(columns=['tax_5_percent'])
         return transformed_df
+
+    elif staging_table_name == 'stg_product':
+        transformed_df = df[['invoice_id', 'product_line', 'unit_price']].copy()
+        transformed_df['product_line'] = transformed_df['product_line'].str.title().str.strip()
+        transformed_df['unit_price'] = pd.to_numeric(transformed_df['unit_price'], errors='coerce')
+        return transformed_df
    
     else:
         # Default: return raw data

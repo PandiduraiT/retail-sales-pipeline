@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS stg_branch(
     invoice_id VARCHAR(15),
-    branch VARCHAR,
+    branch_name VARCHAR,
     city VARCHAR
 );
 

@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS Branch_Dim (
     branch_id SERIAL PRIMARY KEY,
-    branch VARCHAR(50),
+    branch_name VARCHAR(50),
     city VARCHAR(50)
 );
 

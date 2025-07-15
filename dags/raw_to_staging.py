@@ -132,18 +132,26 @@ def transform_for_staging_table(df, staging_table_name):
 
     elif staging_table_name == 'stg_time':
         transformed_df = df[['invoice_id', 'time']].copy()
-        transformed_df['time'] = pd.to_datetime(transformed_df['time'], format='%H:%M', errors='coerce').dt.time
-        transformed_df['hour'] = pd.to_datetime(df['time'], format='%H:%M', errors='coerce').dt.hour
-        transformed_df['minute'] = pd.to_datetime(df['time'], format='%H:%M', errors='coerce').dt.minute
-        transformed_df['am_pm'] = pd.to_datetime(df['time'], format='%H:%M', errors='coerce').dt.strftime('%p')
-        # Create time buckets (e.g., Morning, Afternoon, etc.)
+        transformed_df['time'] = pd.to_datetime(transformed_df['time'], format='%H:%M:%S', errors='coerce').dt.time
+        time_dt = pd.to_datetime(transformed_df['time'].astype(str), format='%H:%M:%S', errors='coerce')
+        transformed_df['hour'] = time_dt.dt.hour
+        transformed_df['minute'] = time_dt.dt.minute
+        transformed_df['am_pm'] = time_dt.dt.strftime('%p')
+     
         def time_bucket(hour):
-            if hour is None: return 'Unknown'
-            if 6 <= hour < 12: return 'Morning'
-            elif 12 <= hour < 17: return 'Afternoon'
-            elif 17 <= hour < 21: return 'Evening'
-            else: return 'Night'
+            if pd.isna(hour): 
+                return 'Unknown'
+            if 6 <= hour < 12: 
+                return 'Morning'
+            elif 12 <= hour < 17: 
+                return 'Afternoon'
+            elif 17 <= hour < 21: 
+                return 'Evening'
+            else: 
+                return 'Night'
+        
         transformed_df['time_bucket'] = transformed_df['hour'].apply(time_bucket)
+        transformed_df = transformed_df.dropna(subset=['time'])
         return transformed_df
 
     elif staging_table_name == 'stg_payment':

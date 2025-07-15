@@ -48,11 +48,11 @@ def load_dim_table(staging_table, dim_table, dim_columns, unique_columns=None, *
 def load_sales_fact(**context):
     """
     Load data into Sales_Fact table by joining with dimension tables.
+    Uses ON CONFLICT to skip duplicates and continue with other records.
     """
     hook = PostgresHook(postgres_conn_id='postgres_retail_sales')
-
     
-    # Complex query to join staging tables with dimension tables
+    # Modified query with ON CONFLICT DO NOTHING to skip duplicates
     query = """
     INSERT INTO Sales_Fact (
         invoice_id, branch_id, customer_id, product_id, date_id, time_id, payment_id,
@@ -74,7 +74,7 @@ def load_sales_fact(**context):
         stg_c.rating::numeric
     FROM stg_sales AS st_s                   
     JOIN stg_branch AS stg_b ON st_s.invoice_id = stg_b.invoice_id
-    JOIN Branch_Dim AS B ON stg_b.branch = B.branch AND stg_b.city = B.city
+    JOIN Branch_Dim AS B ON stg_b.branch_name = B.branch_name AND stg_b.city = B.city
     JOIN stg_customer AS stg_c ON st_s.invoice_id = stg_c.invoice_id
     JOIN Customer_Dim AS C ON stg_c.customer_type = C.customer_type
     JOIN stg_product AS stg_p ON st_s.invoice_id = stg_p.invoice_id
@@ -82,23 +82,34 @@ def load_sales_fact(**context):
     JOIN stg_date AS stg_d ON st_s.invoice_id = stg_d.invoice_id
     JOIN Date_Dim AS D ON stg_d.full_date = D.full_date
     JOIN stg_time AS stg_t ON st_s.invoice_id = stg_t.invoice_id
-    JOIN Time_Dim AS T ON stg_t.time = T.time
+    JOIN Time_Dim AS T ON stg_t.time::TIME = T.time::TIME
     JOIN stg_payment AS stg_pt ON st_s.invoice_id = stg_pt.invoice_id
-    JOIN Payment_Dim AS Pt ON stg_pt.payment_method = Pt.payment_method;
+    JOIN Payment_Dim AS Pt ON stg_pt.payment_method = Pt.payment_method
+    ON CONFLICT (invoice_id) DO NOTHING;
     """
     
     try:
+        # Get count before insert
+        count_before = hook.get_first("SELECT COUNT(*) FROM Sales_Fact")
+        before_count = count_before[0] if count_before else 0
+        
         # Execute the query
         hook.run(query)
         
-        # Get count of inserted rows
-        count_result = hook.get_first("SELECT COUNT(*) FROM Sales_Fact")
-        row_count = count_result[0] if count_result else 0
+        # Get count after insert
+        count_after = hook.get_first("SELECT COUNT(*) FROM Sales_Fact")
+        after_count = count_after[0] if count_after else 0
         
-        print(f"✅ Sales_Fact table now has {row_count} total rows")
+        inserted_count = after_count - before_count
+        
+        print(f"Successfully inserted {inserted_count} new rows into Sales_Fact")
+        print(f"Sales_Fact table now has {after_count} total rows")
+        
+        if inserted_count == 0:
+            print("No new rows were inserted (all records already exist)")
         
     except Exception as e:
-        print(f"❌ Error loading Sales_Fact: {str(e)}")
+        print(f"Error loading Sales_Fact: {str(e)}")
         raise
 
 with DAG(
@@ -123,8 +134,8 @@ with DAG(
         op_kwargs={
             'staging_table': 'stg_branch',
             'dim_table': 'Branch_Dim',
-            'dim_columns': ['branch', 'city'],
-            'unique_columns': ['branch', 'city']
+            'dim_columns': ['branch_name', 'city'],
+            'unique_columns': ['branch_name', 'city']
         }
     )
 
